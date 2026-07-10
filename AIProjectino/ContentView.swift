@@ -22,11 +22,38 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 // Main Canvas Area
                 if viewModel.graph != nil {
-                    ZoomableScrollView(minimumZoomScale: 1.0, maximumZoomScale: 8.0) {
-                        GraphCanvasView(viewModel: viewModel)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if viewModel.visualMode {
+                        ZoomableScrollView(minimumZoomScale: 1.0, maximumZoomScale: 8.0) {
+                            GraphCanvasView(viewModel: viewModel)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        Spacer()
+                        VStack(spacing: 12) {
+                            Image(systemName: "gauge.with.dots.needle.67percent")
+                                .font(.system(size: 48, weight: .thin))
+                                .foregroundStyle(.tertiary)
+                            Text("Performance Mode")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                            if viewModel.isRunning {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .progressViewStyle(.circular)
+                                        .scaleEffect(0.8)
+                                    Text("Running \(viewModel.currentAlgorithm?.rawValue ?? "")…")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } else {
+                                Text("No graph visualization — results only")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        Spacer()
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     Spacer()
                     EmptyCanvasView()
@@ -111,6 +138,7 @@ struct EmptyCanvasView: View {
 // MARK: - Bottom Control Sheet
 struct BottomControlSheet: View {
     @ObservedObject var viewModel: PathfindingViewModel
+    @State private var showIDSWarning = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -139,6 +167,17 @@ struct BottomControlSheet: View {
                     }
                 }
 
+                // ── Mode Toggle ──────────────────────────────────────────
+                Picker("", selection: $viewModel.visualMode) {
+                    Label("Visual", systemImage: "eye")
+                        .tag(true)
+                    Label("Performance", systemImage: "gauge.with.dots.needle.67percent")
+                        .tag(false)
+                }
+                .pickerStyle(.segmented)
+                .disabled(viewModel.isRunning)
+
+
                 // ── Algorithm Selection ───────────────────────────────────
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Run Algorithm", systemImage: "play.circle.fill")
@@ -152,12 +191,21 @@ struct BottomControlSheet: View {
                     let columns = [GridItem(.flexible()), GridItem(.flexible())]
                     LazyVGrid(columns: columns, spacing: 8) {
                         ForEach(PathfindingAlgorithm.allCases) { algo in
+                            let isCurrentRunning = viewModel.currentAlgorithm == algo && viewModel.isRunning
                             AlgorithmButton(
-                                title: algo.rawValue,
-                                isRunning: viewModel.currentAlgorithm == algo && viewModel.isRunning,
-                                isDisabled: viewModel.graph == nil || viewModel.isRunning || viewModel.isGenerating
+                                title: isCurrentRunning ? "Stop" : algo.rawValue,
+                                isRunning: isCurrentRunning,
+                                isDisabled: viewModel.graph == nil || (viewModel.isRunning && !isCurrentRunning) || viewModel.isGenerating
                             ) {
-                                viewModel.runAlgorithm(algo)
+                                if isCurrentRunning {
+                                    viewModel.stopAlgorithm()
+                                } else {
+                                    if algo == .ids && (viewModel.currentGraphSize == .medium || viewModel.currentGraphSize == .gigantomassive) {
+                                        showIDSWarning = true
+                                    } else {
+                                        viewModel.runAlgorithm(algo)
+                                    }
+                                }
                             }
                         }
                     }
@@ -168,6 +216,12 @@ struct BottomControlSheet: View {
             .padding(.bottom, 20)
         }
         .background(Color(UIColor.systemBackground))
+        .alert("Warning", isPresented: $showIDSWarning) {
+            Button("Keep going", role: .destructive) { viewModel.runAlgorithm(.ids) }
+            Button("Go back", role: .cancel) { }
+        } message: {
+            Text("On medium and gigantomassive graphs, Iterative Deepening Search might take a very long time to show a result.")
+        }
     }
 }
 
@@ -207,10 +261,8 @@ struct AlgorithmButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if isRunning {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(0.75)
-                        .tint(.white)
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 12))
                 }
                 Text(title)
                     .font(.subheadline)
@@ -223,11 +275,11 @@ struct AlgorithmButton: View {
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(isRunning
-                          ? Color.orange
+                          ? Color.red
                           : Color(UIColor.secondarySystemBackground))
             )
             .foregroundStyle(isRunning ? .white : .primary)
-            .opacity(isDisabled && !isRunning ? 0.4 : 1.0)
+            .opacity(isDisabled ? 0.4 : 1.0)
         }
         .disabled(isDisabled)
     }

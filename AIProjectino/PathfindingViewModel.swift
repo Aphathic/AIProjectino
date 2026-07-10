@@ -13,8 +13,11 @@ class PathfindingViewModel: ObservableObject {
     @Published var finalPath: [UUID] = []
     @Published var isGenerating = false
     @Published var isRunning = false
+    @Published var visualMode = true
     @Published var metrics: PathfindingMetrics?
     @Published var boundingBox: CGRect = .zero
+    
+    private var currentTask: Task<Void, Never>?
 
     func generateGraph(size: GraphSize) {
         isGenerating = true
@@ -40,6 +43,12 @@ class PathfindingViewModel: ObservableObject {
         }
     }
 
+    func stopAlgorithm() {
+        currentTask?.cancel()
+        isRunning = false
+        currentAlgorithm = nil
+    }
+
     func runAlgorithm(_ type: PathfindingAlgorithm) {
         guard let graph = graph, let start = startNode, let target = targetNode else { return }
 
@@ -48,39 +57,47 @@ class PathfindingViewModel: ObservableObject {
         metrics = nil
         finalPath.removeAll()
         nodeStatuses = [start: .start, target: .target]
+        
+        currentTask?.cancel()
 
-        Task {
+        currentTask = Task {
             let startTime = CFAbsoluteTimeGetCurrent()
-            let delay: UInt64 = 1_000_000
+            let useVisual = self.visualMode
+            let delay: UInt64 = useVisual ? 1_000_000 : 0
 
-            let onUpdate: PathfindingAlgorithms.UpdateCallback = { @MainActor [weak self] id, status in
-                guard let self = self else { return }
-                if id != start && id != target {
-                    self.nodeStatuses[id] = status
+            let onUpdate: PathfindingAlgorithms.UpdateCallback = useVisual
+                ? { @MainActor [weak self] id, status in
+                    guard let self = self else { return }
+                    if id != start && id != target {
+                        self.nodeStatuses[id] = status
+                    }
                 }
-            }
+                : { _, _ in }
 
             let result: PathfindingResult
 
             switch type {
             case .bfs:    result = await PathfindingAlgorithms.runBFS(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
             case .dfs:    result = await PathfindingAlgorithms.runDFS(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
-            case .ucs:    result = await PathfindingAlgorithms.runUCS(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
             case .ids:    result = await PathfindingAlgorithms.runIDS(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
             case .greedy: result = await PathfindingAlgorithms.runGreedy(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
             case .astar:  result = await PathfindingAlgorithms.runAStar(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
             }
 
             let endTime = CFAbsoluteTimeGetCurrent()
+            
+            if Task.isCancelled { return }
 
             // Animate the final path — all nodes go into finalPath for the yellow trace,
             // but only intermediate nodes change color (start/target keep green/red)
             if !result.path.isEmpty {
-                for nodeId in result.path {
-                    finalPath.append(nodeId)
-                    if nodeId != start && nodeId != target {
-                        nodeStatuses[nodeId] = .path
-                        try? await Task.sleep(nanoseconds: 5_000_000)
+                finalPath = result.path
+                if useVisual {
+                    for nodeId in result.path {
+                        if nodeId != start && nodeId != target {
+                            nodeStatuses[nodeId] = .path
+                            try? await Task.sleep(nanoseconds: 5_000_000)
+                        }
                     }
                 }
             }

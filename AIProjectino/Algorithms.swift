@@ -3,7 +3,6 @@ import Foundation
 enum PathfindingAlgorithm: String, CaseIterable, Identifiable {
     case bfs = "BFS"
     case dfs = "DFS"
-    case ucs = "UCS (Dijkstra)"
     case ids = "Iterative Deepening"
     case greedy = "Greedy Search"
     case astar = "A* Search"
@@ -41,9 +40,14 @@ class PathfindingAlgorithms {
             exploredCount += 1
             closedSet.insert(current)
             
+            if Task.isCancelled {
+                let mem = calcMem(queue: queue.capacity, visited: visited.capacity, cameFrom: cameFrom.capacity)
+                return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+            }
+            
             if current != start && current != target {
                 await onUpdate(current, .closed)
-                if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
+                if delay > 0 { try? await Task.sleep(nanoseconds: delay) } else { await Task.yield() }
             }
             
             if current == target {
@@ -82,9 +86,14 @@ class PathfindingAlgorithms {
             exploredCount += 1
             closedSet.insert(current)
             
+            if Task.isCancelled {
+                let mem = calcMem(queue: stack.capacity, visited: visited.capacity, cameFrom: cameFrom.capacity)
+                return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+            }
+            
             if current != start && current != target {
                 await onUpdate(current, .closed)
-                if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
+                if delay > 0 { try? await Task.sleep(nanoseconds: delay) } else { await Task.yield() }
             }
             
             if current == target {
@@ -176,53 +185,7 @@ class PathfindingAlgorithms {
         }
     }
 
-    // MARK: - UCS (Dijkstra)
-    static func runUCS(graph: Graph, start: UUID, target: UUID, delay: UInt64, onUpdate: @escaping UpdateCallback) async -> PathfindingResult {
-        var pq = Heap<PQElement<UUID>>(sort: <)
-        pq.insert(PQElement(element: start, priority: 0))
-        var costSoFar = [UUID: Double]()
-        costSoFar[start] = 0
-        var cameFrom = [UUID: UUID]()
-        var exploredCount = 0
-        var closedSet = Set<UUID>()
-        
-        while let currentPQ = pq.remove() {
-            let current = currentPQ.element
-            
-            if let cost = costSoFar[current], cost < currentPQ.priority { continue }
-            
-            exploredCount += 1
-            closedSet.insert(current)
-            
-            if current != start && current != target {
-                await onUpdate(current, .closed)
-                if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
-            }
-            
-            if current == target {
-                let mem = calcMem(cameFrom: cameFrom.capacity, pq: pq.elements.capacity, costSoFar: costSoFar.capacity)
-                return PathfindingResult(path: reconstructPath(cameFrom: cameFrom, current: target), exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
-            }
-            
-            for edge in graph.adjacencyList[current] ?? [] {
-                let neighbor = edge.target
-                let newCost = (costSoFar[current] ?? 0) + edge.weight
-                
-                if costSoFar[neighbor] == nil || newCost < costSoFar[neighbor]! {
-                    costSoFar[neighbor] = newCost
-                    cameFrom[neighbor] = current
-                    pq.insert(PQElement(element: neighbor, priority: newCost))
-                    
-                    if neighbor != start && neighbor != target {
-                        await onUpdate(neighbor, .open)
-                    }
-                }
-            }
-        }
-        
-        let mem = calcMem(cameFrom: cameFrom.capacity, pq: pq.elements.capacity, costSoFar: costSoFar.capacity)
-        return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
-    }
+    // UCS Removed
     
     // MARK: - Heuristic (Euclidean Distance)
     static func heuristic(nodeA: Node?, nodeB: Node?) -> Double {
@@ -251,9 +214,14 @@ class PathfindingAlgorithms {
             exploredCount += 1
             closedSet.insert(current)
             
+            if Task.isCancelled {
+                let mem = calcMem(cameFrom: cameFrom.capacity, pq: pq.elements.capacity, costSoFar: costSoFar.capacity)
+                return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+            }
+            
             if current != start && current != target {
                 await onUpdate(current, .closed)
-                if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
+                if delay > 0 { try? await Task.sleep(nanoseconds: delay) } else { await Task.yield() }
             }
             
             if current == target {
@@ -298,9 +266,14 @@ class PathfindingAlgorithms {
             exploredCount += 1
             closedSet.insert(current)
             
+            if Task.isCancelled {
+                let mem = calcMem(visited: visited.capacity, cameFrom: cameFrom.capacity, pq: pq.elements.capacity)
+                return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+            }
+            
             if current != start && current != target {
                 await onUpdate(current, .closed)
-                if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
+                if delay > 0 { try? await Task.sleep(nanoseconds: delay) } else { await Task.yield() }
             }
             
             if current == target {
@@ -338,7 +311,11 @@ class PathfindingAlgorithms {
         let tracker = ClosedSetTracker()
         
         while true {
-            let (path, found, exploredCount) = await dls(graph: graph, node: start, target: target, depth: maxDepth, cameFrom: [:], delay: delay, onUpdate: onUpdate, tracker: tracker)
+            if Task.isCancelled { break }
+            await Task.yield()
+            
+            var visited = Set<UUID>([start])
+            let (path, found, exploredCount) = await dls(graph: graph, node: start, target: target, depth: maxDepth, cameFrom: [:], visited: &visited, delay: delay, onUpdate: onUpdate, tracker: tracker)
             totalExplored += exploredCount
             
             if found {
@@ -358,7 +335,7 @@ class PathfindingAlgorithms {
         return PathfindingResult(path: [], exploredCount: totalExplored, uniqueExploredCount: tracker.nodes.count, peakMemoryBytes: mem)
     }
     
-    private static func dls(graph: Graph, node: UUID, target: UUID, depth: Int, cameFrom: [UUID: UUID], delay: UInt64, onUpdate: @escaping UpdateCallback, tracker: ClosedSetTracker) async -> ([UUID], Bool, Int) {
+    private static func dls(graph: Graph, node: UUID, target: UUID, depth: Int, cameFrom: [UUID: UUID], visited: inout Set<UUID>, delay: UInt64, onUpdate: @escaping UpdateCallback, tracker: ClosedSetTracker) async -> ([UUID], Bool, Int) {
         if depth == 0 {
             if node == target {
                 return (reconstructPath(cameFrom: cameFrom, current: target), true, 1)
@@ -366,27 +343,36 @@ class PathfindingAlgorithms {
                 return ([], false, 1)
             }
         } else if depth > 0 {
+            if Task.isCancelled { return ([], false, 0) }
+            
             var exploredCount = 1
             tracker.nodes.insert(node)
             
             if node != target {
                 await onUpdate(node, .closed)
-                if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
+                if delay > 0 { try? await Task.sleep(nanoseconds: delay) } else { await Task.yield() }
             }
             
             for edge in graph.adjacencyList[node] ?? [] {
                 let neighbor = edge.target
+                // Skip nodes already on the current DFS path to prevent cycles
+                // (critical for bidirectional graphs where A→B→A would loop)
+                guard !visited.contains(neighbor) else { continue }
+                
                 var newCameFrom = cameFrom
                 newCameFrom[neighbor] = node
                 
+                visited.insert(neighbor)
                 await onUpdate(neighbor, .open)
                 
-                let (path, found, childExplored) = await dls(graph: graph, node: neighbor, target: target, depth: depth - 1, cameFrom: newCameFrom, delay: delay, onUpdate: onUpdate, tracker: tracker)
+                let (path, found, childExplored) = await dls(graph: graph, node: neighbor, target: target, depth: depth - 1, cameFrom: newCameFrom, visited: &visited, delay: delay, onUpdate: onUpdate, tracker: tracker)
                 exploredCount += childExplored
                 
                 if found {
                     return (path, true, exploredCount)
                 }
+                // Remove from visited when backtracking so other branches can use this node
+                visited.remove(neighbor)
             }
             return ([], false, exploredCount)
         }

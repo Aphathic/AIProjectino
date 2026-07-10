@@ -57,39 +57,70 @@ func createRandomGraph(size: GraphSize) -> (Graph, UUID, UUID, CGRect) {
         let cx = Int(node.position.x / cellSize)
         let cy = Int(node.position.y / cellSize)
 
+        var potentialNeighbors: [(Node, Double)] = []
+
         for offset in neighborOffsets {
             let key = "\(cx + offset.0),\(cy + offset.1)"
             guard let bucket = grid[key] else { continue }
             for neighbor in bucket where node.id != neighbor.id {
                 let dist = PathfindingAlgorithms.heuristic(nodeA: node, nodeB: neighbor)
                 if dist <= radius {
-                    graph.addEdge(Edge(source: node.id, target: neighbor.id, weight: dist), bidirectional: false)
+                    potentialNeighbors.append((neighbor, dist))
                 }
+            }
+        }
+        
+        potentialNeighbors.sort { $0.1 < $1.1 }
+        
+        for (neighbor, dist) in potentialNeighbors {
+            let degreeA = graph.adjacencyList[node.id]?.count ?? 0
+            if degreeA >= 8 { break }
+            
+            let degreeB = graph.adjacencyList[neighbor.id]?.count ?? 0
+            if degreeB >= 8 { continue }
+            
+            let alreadyConnected = graph.adjacencyList[node.id]?.contains(where: { $0.target == neighbor.id }) ?? false
+            if !alreadyConnected {
+                graph.addEdge(Edge(source: node.id, target: neighbor.id, weight: dist), bidirectional: true)
             }
         }
     }
 
-    // 4. Connect any isolated nodes to their nearest connected neighbor
+    // 4. Ensure every node has at least 2 connections
     for node in nodesArray {
-        let edges = graph.adjacencyList[node.id] ?? []
-        guard edges.isEmpty else { continue }
-
-        var nearest: Node?
-        var bestDist: Double = .greatestFiniteMagnitude
-
-        for other in nodesArray where node.id != other.id {
-            let otherEdges = graph.adjacencyList[other.id] ?? []
-            guard !otherEdges.isEmpty else { continue }
-            let dist = PathfindingAlgorithms.heuristic(nodeA: node, nodeB: other)
-            if dist < bestDist {
-                bestDist = dist
-                nearest = other
+        var degreeA = graph.adjacencyList[node.id]?.count ?? 0
+        while degreeA < 2 {
+            var nearest: Node?
+            var bestDist: Double = .greatestFiniteMagnitude
+            var fallbackNearest: Node?
+            var fallbackBestDist: Double = .greatestFiniteMagnitude
+            
+            for other in nodesArray where other.id != node.id {
+                let alreadyConnected = graph.adjacencyList[node.id]?.contains(where: { $0.target == other.id }) ?? false
+                if !alreadyConnected {
+                    let dist = PathfindingAlgorithms.heuristic(nodeA: node, nodeB: other)
+                    
+                    let degreeB = graph.adjacencyList[other.id]?.count ?? 0
+                    if degreeB < 8 {
+                        if dist < bestDist {
+                            bestDist = dist
+                            nearest = other
+                        }
+                    }
+                    if dist < fallbackBestDist {
+                        fallbackBestDist = dist
+                        fallbackNearest = other
+                    }
+                }
             }
-        }
-
-        if let target = nearest ?? (node.id != nodesArray.first?.id ? nodesArray.first : nodesArray.last) {
-            let dist = PathfindingAlgorithms.heuristic(nodeA: node, nodeB: target)
-            graph.addEdge(Edge(source: node.id, target: target.id, weight: dist), bidirectional: true)
+            
+            if let target = nearest ?? fallbackNearest {
+                let dist = nearest != nil ? bestDist : fallbackBestDist
+                graph.addEdge(Edge(source: node.id, target: target.id, weight: dist), bidirectional: true)
+                degreeA += 1
+            } else {
+                break
+            }
         }
     }
 
