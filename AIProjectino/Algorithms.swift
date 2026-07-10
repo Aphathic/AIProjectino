@@ -3,7 +3,6 @@ import Foundation
 enum PathfindingAlgorithm: String, CaseIterable, Identifiable {
     case bfs = "BFS"
     case dfs = "DFS"
-    case ids = "Iterative Deepening"
     case greedy = "Greedy Search"
     case astar = "A* Search"
 
@@ -300,85 +299,7 @@ class PathfindingAlgorithms {
         return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
     }
 
-    class ClosedSetTracker {
-        var nodes = Set<UUID>()
-    }
 
-    // MARK: - IDS (Iterative Deepening Search)
-    static func runIDS(graph: Graph, start: UUID, target: UUID, delay: UInt64, onUpdate: @escaping UpdateCallback) async -> PathfindingResult {
-        var maxDepth = 0
-        var totalExplored = 0
-        let tracker = ClosedSetTracker()
-        
-        while true {
-            if Task.isCancelled { break }
-            await Task.yield()
-            
-            var visited = Set<UUID>([start])
-            let (path, found, exploredCount) = await dls(graph: graph, node: start, target: target, depth: maxDepth, cameFrom: [:], visited: &visited, delay: delay, onUpdate: onUpdate, tracker: tracker)
-            totalExplored += exploredCount
-            
-            if found {
-                // Peak memory for IDS is essentially maxDepth * stack frame size.
-                // We'll estimate each stack frame uses roughly 256 bytes in Swift.
-                let mem = Int64(maxDepth * 256)
-                return PathfindingResult(path: path, exploredCount: totalExplored, uniqueExploredCount: tracker.nodes.count, peakMemoryBytes: mem)
-            }
-            
-            if maxDepth > graph.nodes.count {
-                break
-            }
-            maxDepth += 1
-        }
-        
-        let mem = Int64(maxDepth * 256)
-        return PathfindingResult(path: [], exploredCount: totalExplored, uniqueExploredCount: tracker.nodes.count, peakMemoryBytes: mem)
-    }
-    
-    private static func dls(graph: Graph, node: UUID, target: UUID, depth: Int, cameFrom: [UUID: UUID], visited: inout Set<UUID>, delay: UInt64, onUpdate: @escaping UpdateCallback, tracker: ClosedSetTracker) async -> ([UUID], Bool, Int) {
-        if depth == 0 {
-            if node == target {
-                return (reconstructPath(cameFrom: cameFrom, current: target), true, 1)
-            } else {
-                return ([], false, 1)
-            }
-        } else if depth > 0 {
-            if Task.isCancelled { return ([], false, 0) }
-            
-            var exploredCount = 1
-            tracker.nodes.insert(node)
-            
-            if node != target {
-                await onUpdate(node, .closed)
-                if delay > 0 { try? await Task.sleep(nanoseconds: delay) } else { await Task.yield() }
-            }
-            
-            for edge in graph.adjacencyList[node] ?? [] {
-                let neighbor = edge.target
-                // Skip nodes already on the current DFS path to prevent cycles
-                // (critical for bidirectional graphs where A→B→A would loop)
-                guard !visited.contains(neighbor) else { continue }
-                
-                var newCameFrom = cameFrom
-                newCameFrom[neighbor] = node
-                
-                visited.insert(neighbor)
-                await onUpdate(neighbor, .open)
-                
-                let (path, found, childExplored) = await dls(graph: graph, node: neighbor, target: target, depth: depth - 1, cameFrom: newCameFrom, visited: &visited, delay: delay, onUpdate: onUpdate, tracker: tracker)
-                exploredCount += childExplored
-                
-                if found {
-                    return (path, true, exploredCount)
-                }
-                // Remove from visited when backtracking so other branches can use this node
-                visited.remove(neighbor)
-            }
-            return ([], false, exploredCount)
-        }
-        
-        return ([], false, 0)
-    }
     
     // MARK: - Helper
     private static func reconstructPath(cameFrom: [UUID: UUID], current: UUID) -> [UUID] {

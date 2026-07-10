@@ -21,53 +21,57 @@ struct ContentView: View {
 
             VStack(spacing: 0) {
                 // Main Canvas Area
-                if viewModel.graph != nil {
-                    if viewModel.visualMode {
+                ZStack {
+                    if viewModel.graph != nil {
                         ZoomableScrollView(minimumZoomScale: 1.0, maximumZoomScale: 8.0) {
                             GraphCanvasView(viewModel: viewModel)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
-                        Spacer()
-                        VStack(spacing: 12) {
-                            Image(systemName: "gauge.with.dots.needle.67percent")
-                                .font(.system(size: 48, weight: .thin))
-                                .foregroundStyle(.tertiary)
-                            Text("Performance Mode")
-                                .font(.headline)
-                                .foregroundStyle(.secondary)
-                            if viewModel.isRunning {
-                                HStack(spacing: 8) {
-                                    ProgressView()
-                                        .progressViewStyle(.circular)
-                                        .scaleEffect(0.8)
-                                    Text("Running \(viewModel.currentAlgorithm?.rawValue ?? "")…")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                }
-                            } else {
-                                Text("No graph visualization — results only")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                        Spacer()
+                        EmptyCanvasView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                } else {
-                    Spacer()
-                    EmptyCanvasView()
-                    Spacer()
+
+                    // Computing Overlay
+                    if viewModel.isRunning && !viewModel.isAnimating {
+                        ZStack {
+                            Color.black.opacity(0.35)
+                                .ignoresSafeArea()
+                            VStack(spacing: 14) {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .scaleEffect(1.2)
+                                    .tint(.white)
+                                Text("Computing \(viewModel.currentAlgorithm?.rawValue ?? "")…")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.white)
+                                Text(viewModel.formattedElapsedTime)
+                                    .font(.system(.title2, design: .monospaced))
+                                    .fontWeight(.bold)
+                                    .foregroundStyle(.white)
+                                    .contentTransition(.numericText())
+                                    .animation(.linear(duration: 0.1), value: viewModel.elapsedTime)
+                            }
+                            .padding(.horizontal, 28)
+                            .padding(.vertical, 22)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(.ultraThinMaterial.opacity(0.9))
+                            )
+                        }
+                    }
+
+                    // Generating Overlay
+                    if viewModel.isGenerating {
+                        GeneratingOverlay()
+                    }
                 }
 
                 // Bottom Panel: Algorithms
                 BottomControlSheet(viewModel: viewModel)
                     .shadow(radius: 2, y: -2)
-            }
-
-            // Loading Overlay
-            if viewModel.isGenerating {
-                GeneratingOverlay()
             }
         }
         .sheet(item: $viewModel.metrics) { metrics in
@@ -85,8 +89,6 @@ struct NodeLegend: View {
     private let items: [(Color, String)] = [
         (.green,  "Start"),
         (.red,    "Target"),
-        (.cyan,   "Frontier"),
-        (.blue,   "Closed"),
         (.yellow, "Path"),
         (.gray,   "Unexplored"),
     ]
@@ -138,7 +140,6 @@ struct EmptyCanvasView: View {
 // MARK: - Bottom Control Sheet
 struct BottomControlSheet: View {
     @ObservedObject var viewModel: PathfindingViewModel
-    @State private var showIDSWarning = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -167,17 +168,6 @@ struct BottomControlSheet: View {
                     }
                 }
 
-                // ── Mode Toggle ──────────────────────────────────────────
-                Picker("", selection: $viewModel.visualMode) {
-                    Label("Visual", systemImage: "eye")
-                        .tag(true)
-                    Label("Performance", systemImage: "gauge.with.dots.needle.67percent")
-                        .tag(false)
-                }
-                .pickerStyle(.segmented)
-                .disabled(viewModel.isRunning)
-
-
                 // ── Algorithm Selection ───────────────────────────────────
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Run Algorithm", systemImage: "play.circle.fill")
@@ -200,11 +190,7 @@ struct BottomControlSheet: View {
                                 if isCurrentRunning {
                                     viewModel.stopAlgorithm()
                                 } else {
-                                    if algo == .ids && (viewModel.currentGraphSize == .medium || viewModel.currentGraphSize == .gigantomassive) {
-                                        showIDSWarning = true
-                                    } else {
-                                        viewModel.runAlgorithm(algo)
-                                    }
+                                    viewModel.runAlgorithm(algo)
                                 }
                             }
                         }
@@ -216,12 +202,6 @@ struct BottomControlSheet: View {
             .padding(.bottom, 20)
         }
         .background(Color(UIColor.systemBackground))
-        .alert("Warning", isPresented: $showIDSWarning) {
-            Button("Keep going", role: .destructive) { viewModel.runAlgorithm(.ids) }
-            Button("Go back", role: .cancel) { }
-        } message: {
-            Text("On medium and gigantomassive graphs, Iterative Deepening Search might take a very long time to show a result.")
-        }
     }
 }
 
@@ -320,9 +300,10 @@ struct ResultsSheet: View {
             List {
                 Section {
                     MetricRow(icon: "circle.grid.3x3", label: "Total Nodes", value: "\(metrics.totalNodes)")
+                    MetricRow(icon: "point.topleft.down.curvedto.point.bottomright.up", label: "Path Length", value: "\(metrics.pathLength)")
                     MetricRow(icon: "arrow.triangle.turn.up.right.diamond", label: "Steps Taken", value: "\(metrics.stepsTaken)")
                     MetricRow(icon: "eye", label: "Unique Explored", value: "\(metrics.uniqueExploredCount)")
-                    MetricRow(icon: "timer", label: "Time Taken", value: String(format: "%.2f ms", metrics.timeTakenMS))
+                    MetricRow(icon: "timer", label: "Time Taken", value: metrics.timeFormatted)
                     MetricRow(icon: "memorychip", label: "Est. Memory", value: metrics.memoryUsedFormatted)
                 } header: {
                     Text("Performance")

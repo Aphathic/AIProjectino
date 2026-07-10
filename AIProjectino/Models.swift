@@ -66,12 +66,14 @@ enum GraphSize: String, CaseIterable {
     case small = "100"
     case medium = "1.000"
     case gigantomassive = "10.000"
+    case ultraMassive = "100.000"
     
     var nodeCount: Int {
         switch self {
         case .small: return 100
         case .medium: return 1000
         case .gigantomassive: return 10000
+        case .ultraMassive: return 100000
         }
     }
     
@@ -80,6 +82,7 @@ enum GraphSize: String, CaseIterable {
         case .small: return 150.0
         case .medium: return 150.0
         case .gigantomassive: return 150.0
+        case .ultraMassive: return 150.0
         }
     }
 }
@@ -99,11 +102,23 @@ struct PathfindingMetrics: Identifiable {
     // can be used throughout the app without needing a custom init.
     let stepsTaken: Int
     let uniqueExploredCount: Int
+    let pathLength: Int
 
     var memoryUsedFormatted: String {
         let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB]
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
         formatter.countStyle = .memory
         return formatter.string(fromByteCount: memoryUsedBytes)
+    }
+
+    var timeFormatted: String {
+        let timeInSeconds = timeTakenMS / 1000.0
+        if timeInSeconds < 60 {
+            return String(format: "%.2f ms", timeTakenMS)
+        } else {
+            let m = Int(timeInSeconds) / 60
+            let s = timeInSeconds.truncatingRemainder(dividingBy: 60)
+            return String(format: "%dm %.1fs", m, s)
+        }
     }
 }

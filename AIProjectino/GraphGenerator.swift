@@ -13,6 +13,7 @@ func createRandomGraph(size: GraphSize) -> (Graph, UUID, UUID, CGRect) {
     case .small:            areaSize = 1_000
     case .medium:           areaSize = 3_000
     case .gigantomassive:   areaSize = 10_000
+    case .ultraMassive:     areaSize = 31_000
     }
 
     var minX: Double =  .greatestFiniteMagnitude

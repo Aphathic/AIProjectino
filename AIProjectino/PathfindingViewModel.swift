@@ -13,11 +13,25 @@ class PathfindingViewModel: ObservableObject {
     @Published var finalPath: [UUID] = []
     @Published var isGenerating = false
     @Published var isRunning = false
-    @Published var visualMode = true
+    @Published var isAnimating = false
     @Published var metrics: PathfindingMetrics?
     @Published var boundingBox: CGRect = .zero
+    @Published var elapsedTime: TimeInterval = 0
+    @Published var algorithmError: String?
+    
+    var formattedElapsedTime: String {
+        if elapsedTime < 60 {
+            return String(format: "%.1fs", elapsedTime)
+        } else {
+            let m = Int(elapsedTime) / 60
+            let s = elapsedTime.truncatingRemainder(dividingBy: 60)
+            return String(format: "%dm %.1fs", m, s)
+        }
+    }
     
     private var currentTask: Task<Void, Never>?
+    private var timerCancellable: AnyCancellable?
+    private var algorithmStartTime: CFAbsoluteTime = 0
 
     func generateGraph(size: GraphSize) {
         isGenerating = true
@@ -45,8 +59,26 @@ class PathfindingViewModel: ObservableObject {
 
     func stopAlgorithm() {
         currentTask?.cancel()
+        stopTimer()
         isRunning = false
+        isAnimating = false
         currentAlgorithm = nil
+    }
+    
+    private func startTimer() {
+        algorithmStartTime = CFAbsoluteTimeGetCurrent()
+        elapsedTime = 0
+        timerCancellable = Timer.publish(every: 0.1, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                self.elapsedTime = CFAbsoluteTimeGetCurrent() - self.algorithmStartTime
+            }
+    }
+    
+    private func stopTimer() {
+        timerCancellable?.cancel()
+        timerCancellable = nil
     }
 
     func runAlgorithm(_ type: PathfindingAlgorithm) {
@@ -54,54 +86,41 @@ class PathfindingViewModel: ObservableObject {
 
         currentAlgorithm = type
         isRunning = true
+        isAnimating = false
         metrics = nil
+        algorithmError = nil
         finalPath.removeAll()
         nodeStatuses = [start: .start, target: .target]
         
         currentTask?.cancel()
+        startTimer()
 
         currentTask = Task {
+            // ── Phase 1: Compute at full speed ──────────────────────
             let startTime = CFAbsoluteTimeGetCurrent()
-            let useVisual = self.visualMode
-            let delay: UInt64 = useVisual ? 1_000_000 : 0
 
-            let onUpdate: PathfindingAlgorithms.UpdateCallback = useVisual
-                ? { @MainActor [weak self] id, status in
-                    guard let self = self else { return }
-                    if id != start && id != target {
-                        self.nodeStatuses[id] = status
-                    }
-                }
-                : { _, _ in }
-
-            let result: PathfindingResult
-
-            switch type {
-            case .bfs:    result = await PathfindingAlgorithms.runBFS(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
-            case .dfs:    result = await PathfindingAlgorithms.runDFS(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
-            case .ids:    result = await PathfindingAlgorithms.runIDS(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
-            case .greedy: result = await PathfindingAlgorithms.runGreedy(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
-            case .astar:  result = await PathfindingAlgorithms.runAStar(graph: graph, start: start, target: target, delay: delay, onUpdate: onUpdate)
-            }
+            let result = await Self.computeAlgorithm(type: type, graph: graph, start: start, target: target)
 
             let endTime = CFAbsoluteTimeGetCurrent()
+            self.stopTimer()
             
             if Task.isCancelled { return }
-
-            // Animate the final path — all nodes go into finalPath for the yellow trace,
-            // but only intermediate nodes change color (start/target keep green/red)
+            
+            // ── Phase 2: Trace the final path instantly ─────────────
+            self.isAnimating = true
+            
             if !result.path.isEmpty {
                 finalPath = result.path
-                if useVisual {
-                    for nodeId in result.path {
-                        if nodeId != start && nodeId != target {
-                            nodeStatuses[nodeId] = .path
-                            try? await Task.sleep(nanoseconds: 5_000_000)
-                        }
+                for nodeId in result.path {
+                    if nodeId != start && nodeId != target {
+                        nodeStatuses[nodeId] = .path
                     }
                 }
+            } else {
+                self.algorithmError = "No path found between start and target nodes."
             }
 
+            // ── Phase 4: Show results ───────────────────────────────
             self.metrics = PathfindingMetrics(
                 algorithmName: type.rawValue,
                 totalNodes: graph.nodes.count,
@@ -109,10 +128,12 @@ class PathfindingViewModel: ObservableObject {
                 exploredNodesCount: result.exploredCount,
                 memoryUsedBytes: result.peakMemoryBytes,
                 stepsTaken: result.exploredCount,
-                uniqueExploredCount: result.uniqueExploredCount
+                uniqueExploredCount: result.uniqueExploredCount,
+                pathLength: result.path.count
             )
 
             self.isRunning = false
+            self.isAnimating = false
             self.currentAlgorithm = nil
         }
     }
@@ -123,5 +144,16 @@ class PathfindingViewModel: ObservableObject {
         nodeStatuses.removeAll()
         if let s = startNode  { nodeStatuses[s] = .start }
         if let t = targetNode { nodeStatuses[t] = .target }
+    }
+    
+    // Runs on a background executor but automatically inherits Task cancellation from the parent Task!
+    nonisolated static func computeAlgorithm(type: PathfindingAlgorithm, graph: Graph, start: UUID, target: UUID) async -> PathfindingResult {
+        let onUpdate: PathfindingAlgorithms.UpdateCallback = { _, _ in }
+        switch type {
+        case .bfs:    return await PathfindingAlgorithms.runBFS(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
+        case .dfs:    return await PathfindingAlgorithms.runDFS(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
+        case .greedy: return await PathfindingAlgorithms.runGreedy(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
+        case .astar:  return await PathfindingAlgorithms.runAStar(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
+        }
     }
 }
