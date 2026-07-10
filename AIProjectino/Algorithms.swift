@@ -4,6 +4,7 @@ enum PathfindingAlgorithm: String, CaseIterable, Identifiable {
     case bfs = "BFS"
     case dfs = "DFS"
     case greedy = "Greedy Search"
+    case dijkstra = "Dijkstra"
     case astar = "A* Search"
 
     var id: String { self.rawValue }
@@ -11,6 +12,7 @@ enum PathfindingAlgorithm: String, CaseIterable, Identifiable {
 
 struct PathfindingResult {
     let path: [UUID]
+    let pathCost: Double
     /// Total steps / nodes popped from frontier (may include revisits depending on algorithm)
     let exploredCount: Int
     /// Unique nodes discovered/explored (size of visited / costSoFar sets)
@@ -41,7 +43,7 @@ class PathfindingAlgorithms {
             
             if Task.isCancelled {
                 let mem = calcMem(queue: queue.capacity, visited: visited.capacity, cameFrom: cameFrom.capacity)
-                return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+                return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
             }
             
             if current != start && current != target {
@@ -51,7 +53,8 @@ class PathfindingAlgorithms {
             
             if current == target {
                 let mem = calcMem(queue: queue.capacity, visited: visited.capacity, cameFrom: cameFrom.capacity)
-                return PathfindingResult(path: reconstructPath(cameFrom: cameFrom, current: target), exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+                let (path, cost) = reconstructPathAndCost(cameFrom: cameFrom, current: target, graph: graph)
+                return PathfindingResult(path: path, pathCost: cost, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
             }
             
             for edge in graph.adjacencyList[current] ?? [] {
@@ -69,7 +72,7 @@ class PathfindingAlgorithms {
         }
         
         let mem = calcMem(queue: queue.capacity, visited: visited.capacity, cameFrom: cameFrom.capacity)
-        return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+        return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
     }
     
     // MARK: - DFS
@@ -87,7 +90,7 @@ class PathfindingAlgorithms {
             
             if Task.isCancelled {
                 let mem = calcMem(queue: stack.capacity, visited: visited.capacity, cameFrom: cameFrom.capacity)
-                return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+                return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
             }
             
             if current != start && current != target {
@@ -97,7 +100,8 @@ class PathfindingAlgorithms {
             
             if current == target {
                 let mem = calcMem(queue: stack.capacity, visited: visited.capacity, cameFrom: cameFrom.capacity)
-                return PathfindingResult(path: reconstructPath(cameFrom: cameFrom, current: target), exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+                let (path, cost) = reconstructPathAndCost(cameFrom: cameFrom, current: target, graph: graph)
+                return PathfindingResult(path: path, pathCost: cost, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
             }
             
             for edge in (graph.adjacencyList[current] ?? []).reversed() {
@@ -115,7 +119,7 @@ class PathfindingAlgorithms {
         }
         
         let mem = calcMem(queue: stack.capacity, visited: visited.capacity, cameFrom: cameFrom.capacity)
-        return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+        return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
     }
     
     // MARK: - PriorityQueue for UCS, Greedy, A*
@@ -194,6 +198,59 @@ class PathfindingAlgorithms {
         return sqrt(dx*dx + dy*dy)
     }
 
+    // MARK: - Dijkstra
+    static func runDijkstra(graph: Graph, start: UUID, target: UUID, delay: UInt64, onUpdate: @escaping UpdateCallback) async -> PathfindingResult {
+        var pq = Heap<PQElement<UUID>>(sort: <)
+        pq.insert(PQElement(element: start, priority: 0))
+        var costSoFar = [UUID: Double]()
+        costSoFar[start] = 0
+        var cameFrom = [UUID: UUID]()
+        var exploredCount = 0
+        var closedSet = Set<UUID>()
+        
+        while let currentPQ = pq.remove() {
+            let current = currentPQ.element
+            if let cost = costSoFar[current], cost < currentPQ.priority { continue }
+            
+            exploredCount += 1
+            closedSet.insert(current)
+            
+            if Task.isCancelled {
+                let mem = calcMem(cameFrom: cameFrom.capacity, pq: pq.elements.capacity, costSoFar: costSoFar.capacity)
+                return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+            }
+            
+            if current != start && current != target {
+                await onUpdate(current, .closed)
+                if delay > 0 { try? await Task.sleep(nanoseconds: delay) } else { await Task.yield() }
+            }
+            
+            if current == target {
+                let mem = calcMem(cameFrom: cameFrom.capacity, pq: pq.elements.capacity, costSoFar: costSoFar.capacity)
+                let (path, pathCost) = reconstructPathAndCost(cameFrom: cameFrom, current: target, graph: graph)
+                return PathfindingResult(path: path, pathCost: pathCost, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+            }
+            
+            for edge in graph.adjacencyList[current] ?? [] {
+                let neighbor = edge.target
+                let newCost = (costSoFar[current] ?? 0) + edge.weight
+                
+                if costSoFar[neighbor] == nil || newCost < costSoFar[neighbor]! {
+                    costSoFar[neighbor] = newCost
+                    cameFrom[neighbor] = current
+                    pq.insert(PQElement(element: neighbor, priority: newCost))
+                    
+                    if neighbor != start && neighbor != target {
+                        await onUpdate(neighbor, .open)
+                    }
+                }
+            }
+        }
+        
+        let mem = calcMem(cameFrom: cameFrom.capacity, pq: pq.elements.capacity, costSoFar: costSoFar.capacity)
+        return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+    }
+
     // MARK: - A* Search
     static func runAStar(graph: Graph, start: UUID, target: UUID, delay: UInt64, onUpdate: @escaping UpdateCallback) async -> PathfindingResult {
         var pq = Heap<PQElement<UUID>>(sort: <)
@@ -215,7 +272,7 @@ class PathfindingAlgorithms {
             
             if Task.isCancelled {
                 let mem = calcMem(cameFrom: cameFrom.capacity, pq: pq.elements.capacity, costSoFar: costSoFar.capacity)
-                return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+                return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
             }
             
             if current != start && current != target {
@@ -225,7 +282,8 @@ class PathfindingAlgorithms {
             
             if current == target {
                 let mem = calcMem(cameFrom: cameFrom.capacity, pq: pq.elements.capacity, costSoFar: costSoFar.capacity)
-                return PathfindingResult(path: reconstructPath(cameFrom: cameFrom, current: target), exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+                let (path, cost) = reconstructPathAndCost(cameFrom: cameFrom, current: target, graph: graph)
+                return PathfindingResult(path: path, pathCost: cost, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
             }
             
             for edge in graph.adjacencyList[current] ?? [] {
@@ -246,7 +304,7 @@ class PathfindingAlgorithms {
         }
         
         let mem = calcMem(cameFrom: cameFrom.capacity, pq: pq.elements.capacity, costSoFar: costSoFar.capacity)
-        return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+        return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
     }
     
     // MARK: - Greedy Search
@@ -267,7 +325,7 @@ class PathfindingAlgorithms {
             
             if Task.isCancelled {
                 let mem = calcMem(visited: visited.capacity, cameFrom: cameFrom.capacity, pq: pq.elements.capacity)
-                return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+                return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
             }
             
             if current != start && current != target {
@@ -277,7 +335,8 @@ class PathfindingAlgorithms {
             
             if current == target {
                 let mem = calcMem(visited: visited.capacity, cameFrom: cameFrom.capacity, pq: pq.elements.capacity)
-                return PathfindingResult(path: reconstructPath(cameFrom: cameFrom, current: target), exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+                let (path, cost) = reconstructPathAndCost(cameFrom: cameFrom, current: target, graph: graph)
+                return PathfindingResult(path: path, pathCost: cost, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
             }
             
             for edge in graph.adjacencyList[current] ?? [] {
@@ -296,19 +355,23 @@ class PathfindingAlgorithms {
         }
         
         let mem = calcMem(visited: visited.capacity, cameFrom: cameFrom.capacity, pq: pq.elements.capacity)
-        return PathfindingResult(path: [], exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
+        return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
     }
 
 
     
     // MARK: - Helper
-    private static func reconstructPath(cameFrom: [UUID: UUID], current: UUID) -> [UUID] {
+    private static func reconstructPathAndCost(cameFrom: [UUID: UUID], current: UUID, graph: Graph) -> ([UUID], Double) {
         var path = [current]
-        var current = current
-        while let previous = cameFrom[current] {
+        var pathCost: Double = 0
+        var curr = current
+        while let previous = cameFrom[curr] {
             path.append(previous)
-            current = previous
+            if let edges = graph.adjacencyList[previous], let edge = edges.first(where: { $0.target == curr }) {
+                pathCost += edge.weight
+            }
+            curr = previous
         }
-        return path.reversed()
+        return (path.reversed(), pathCost)
     }
 }

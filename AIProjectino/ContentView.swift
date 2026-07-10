@@ -181,9 +181,11 @@ struct BottomControlSheet: View {
                     let columns = [GridItem(.flexible()), GridItem(.flexible())]
                     LazyVGrid(columns: columns, spacing: 8) {
                         ForEach(PathfindingAlgorithm.allCases) { algo in
-                            let isCurrentRunning = viewModel.currentAlgorithm == algo && viewModel.isRunning
+                            let isCurrentAlgo = viewModel.currentAlgorithm == algo
+                            let isCurrentRunning = isCurrentAlgo && viewModel.isRunning
                             AlgorithmButton(
                                 title: isCurrentRunning ? "Stop" : algo.rawValue,
+                                isActive: isCurrentAlgo,
                                 isRunning: isCurrentRunning,
                                 isDisabled: viewModel.graph == nil || (viewModel.isRunning && !isCurrentRunning) || viewModel.isGenerating
                             ) {
@@ -233,6 +235,7 @@ struct SizeButton: View {
 // MARK: - Algorithm Button
 struct AlgorithmButton: View {
     let title: String
+    let isActive: Bool
     let isRunning: Bool
     let isDisabled: Bool
     let action: () -> Void
@@ -251,17 +254,16 @@ struct AlgorithmButton: View {
                     .minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 11)
+            .padding(.vertical, 12)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isRunning
-                          ? Color.red
-                          : Color(UIColor.secondarySystemBackground))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isActive ? (isRunning ? Color.red : Color.accentColor) : Color(UIColor.secondarySystemFill))
             )
-            .foregroundStyle(isRunning ? .white : .primary)
-            .opacity(isDisabled ? 0.4 : 1.0)
+            .foregroundStyle(isActive ? .white : .primary)
+            .opacity(isDisabled ? 0.5 : 1.0)
         }
         .disabled(isDisabled)
+        .buttonStyle(.plain)
     }
 }
 
@@ -295,18 +297,26 @@ struct GeneratingOverlay: View {
 struct ResultsSheet: View {
     let metrics: PathfindingMetrics
 
+    @State private var showCoverageHelp = false
+
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    MetricRow(icon: "circle.grid.3x3", label: "Total Nodes", value: "\(metrics.totalNodes)")
-                    MetricRow(icon: "point.topleft.down.curvedto.point.bottomright.up", label: "Path Length", value: "\(metrics.pathLength)")
-                    MetricRow(icon: "arrow.triangle.turn.up.right.diamond", label: "Steps Taken", value: "\(metrics.stepsTaken)")
-                    MetricRow(icon: "eye", label: "Unique Explored", value: "\(metrics.uniqueExploredCount)")
-                    MetricRow(icon: "timer", label: "Time Taken", value: metrics.timeFormatted)
-                    MetricRow(icon: "memorychip", label: "Est. Memory", value: metrics.memoryUsedFormatted)
+                    MetricRow(icon: "circle.grid.3x3", label: "Total Nodes", value: "\(metrics.totalNodes) nodes", helpText: "Total nodes generated in this graph.")
+                    MetricRow(icon: "point.topleft.down.curvedto.point.bottomright.up", label: "Path Length", value: "\(metrics.pathLength) nodes", helpText: "Nodes in the final path, including start and target.")
+                    MetricRow(icon: "dollarsign", label: "Total Cost", value: String(format: "%.1f units", metrics.pathCost), helpText: "Physical length of the path. A* and Dijkstra minimize this.")
                 } header: {
-                    Text("Performance")
+                    Text("Graph & Path")
+                }
+
+                Section {
+                    MetricRow(icon: "timer", label: "Time Taken", value: metrics.timeFormatted, helpText: "Raw computation time to find the path.")
+                    MetricRow(icon: "arrow.triangle.turn.up.right.diamond", label: "Steps Taken", value: "\(metrics.stepsTaken) steps", helpText: "Total movements made. Can be higher than Unique Explored if nodes are revisited.")
+                    MetricRow(icon: "eye", label: "Unique Explored", value: "\(metrics.uniqueExploredCount) nodes", helpText: "Unique nodes visited. Lower means more efficient.")
+                    MetricRow(icon: "memorychip", label: "Est. Memory", value: metrics.memoryUsedFormatted, helpText: "Estimated peak RAM used by the algorithm.")
+                } header: {
+                    Text("Algorithm Performance")
                 }
 
                 Section {
@@ -318,6 +328,21 @@ struct ResultsSheet: View {
                             Text("Node Coverage")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
+                            Button(action: { showCoverageHelp.toggle() }) {
+                                Image(systemName: "info.circle")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $showCoverageHelp) {
+                                Text("Percentage of nodes explored before finding the target. Lower is better.")
+                                    .font(.subheadline)
+                                    .padding()
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: 250)
+                                    .presentationCompactAdaptation(.popover)
+                            }
+                            .help("Percentage of nodes explored before finding the target. Lower is better.")
                             Spacer()
                             Text(String(format: "%.1f%%", efficiency))
                                 .font(.subheadline)
@@ -343,11 +368,31 @@ struct MetricRow: View {
     let icon: String
     let label: String
     let value: String
+    var helpText: String? = nil
+
+    @State private var showHelp = false
 
     var body: some View {
         HStack {
             Label(label, systemImage: icon)
                 .foregroundStyle(.primary)
+            if let helpText = helpText {
+                Button(action: { showHelp.toggle() }) {
+                    Image(systemName: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showHelp) {
+                    Text(helpText)
+                        .font(.subheadline)
+                        .padding()
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 250)
+                        .presentationCompactAdaptation(.popover)
+                }
+                .help(helpText)
+            }
             Spacer()
             Text(value)
                 .fontWeight(.semibold)

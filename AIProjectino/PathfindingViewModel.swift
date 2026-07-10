@@ -62,7 +62,6 @@ class PathfindingViewModel: ObservableObject {
         stopTimer()
         isRunning = false
         isAnimating = false
-        currentAlgorithm = nil
     }
     
     private func startTimer() {
@@ -129,12 +128,12 @@ class PathfindingViewModel: ObservableObject {
                 memoryUsedBytes: result.peakMemoryBytes,
                 stepsTaken: result.exploredCount,
                 uniqueExploredCount: result.uniqueExploredCount,
-                pathLength: result.path.count
+                pathLength: result.path.count,
+                pathCost: result.pathCost
             )
 
             self.isRunning = false
             self.isAnimating = false
-            self.currentAlgorithm = nil
         }
     }
 
@@ -150,10 +149,11 @@ class PathfindingViewModel: ObservableObject {
     nonisolated static func computeAlgorithm(type: PathfindingAlgorithm, graph: Graph, start: UUID, target: UUID) async -> PathfindingResult {
         let onUpdate: PathfindingAlgorithms.UpdateCallback = { _, _ in }
         switch type {
-        case .bfs:    return await PathfindingAlgorithms.runBFS(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
-        case .dfs:    return await PathfindingAlgorithms.runDFS(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
-        case .greedy: return await PathfindingAlgorithms.runGreedy(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
-        case .astar:  return await PathfindingAlgorithms.runAStar(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
+        case .bfs:      return await PathfindingAlgorithms.runBFS(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
+        case .dfs:      return await PathfindingAlgorithms.runDFS(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
+        case .greedy:   return await PathfindingAlgorithms.runGreedy(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
+        case .dijkstra: return await PathfindingAlgorithms.runDijkstra(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
+        case .astar:    return await PathfindingAlgorithms.runAStar(graph: graph, start: start, target: target, delay: 0, onUpdate: onUpdate)
         }
     }
 }

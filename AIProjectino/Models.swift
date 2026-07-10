@@ -103,6 +103,7 @@ struct PathfindingMetrics: Identifiable {
     let stepsTaken: Int
     let uniqueExploredCount: Int
     let pathLength: Int
+    let pathCost: Double
 
     var memoryUsedFormatted: String {
         let formatter = ByteCountFormatter()
