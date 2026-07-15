@@ -1,3 +1,10 @@
+//
+//  PathfindingViewModel.swift
+//  AIProjectino
+//
+//  Created by Crescenzo Di Franco on 09/07/2026.
+//
+
 import SwiftUI
 import CoreGraphics
 import Combine
@@ -95,7 +102,6 @@ class PathfindingViewModel: ObservableObject {
         startTimer()
 
         currentTask = Task {
-            // ── Phase 1: Compute at full speed ──────────────────────
             let startTime = CFAbsoluteTimeGetCurrent()
 
             let result = await Self.computeAlgorithm(type: type, graph: graph, start: start, target: target)
@@ -105,7 +111,6 @@ class PathfindingViewModel: ObservableObject {
             
             if Task.isCancelled { return }
             
-            // ── Phase 2: Trace the final path instantly ─────────────
             self.isAnimating = true
             
             if !result.path.isEmpty {
@@ -119,7 +124,6 @@ class PathfindingViewModel: ObservableObject {
                 self.algorithmError = "No path found between start and target nodes."
             }
 
-            // ── Phase 4: Show results ───────────────────────────────
             self.metrics = PathfindingMetrics(
                 algorithmName: type.rawValue,
                 totalNodes: graph.nodes.count,
@@ -145,7 +149,7 @@ class PathfindingViewModel: ObservableObject {
         if let t = targetNode { nodeStatuses[t] = .target }
     }
     
-    // Runs on a background executor but automatically inherits Task cancellation from the parent Task!
+    // nonisolated per girare in background, ma eredita la cancellazione del Task padre
     nonisolated static func computeAlgorithm(type: PathfindingAlgorithm, graph: Graph, start: UUID, target: UUID) async -> PathfindingResult {
         let onUpdate: PathfindingAlgorithms.UpdateCallback = { _, _ in }
         switch type {

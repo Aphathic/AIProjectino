@@ -1,3 +1,10 @@
+//
+//  Algorithms.swift
+//  AIProjectino
+//
+//  Created by Crescenzo Di Franco on 09/07/2026.
+//
+
 import Foundation
 
 enum PathfindingAlgorithm: String, CaseIterable, Identifiable {
@@ -13,9 +20,7 @@ enum PathfindingAlgorithm: String, CaseIterable, Identifiable {
 struct PathfindingResult {
     let path: [UUID]
     let pathCost: Double
-    /// Total steps / nodes popped from frontier (may include revisits depending on algorithm)
     let exploredCount: Int
-    /// Unique nodes discovered/explored (size of visited / costSoFar sets)
     let uniqueExploredCount: Int
     let peakMemoryBytes: Int64
 }
@@ -23,12 +28,13 @@ struct PathfindingResult {
 class PathfindingAlgorithms {
     typealias UpdateCallback = (UUID, NodeStatus) async -> Void
     
-    // Memory approximation based on capacities to represent theoretical space complexity
+    // stima della memoria in base alla capacità delle strutture dati, forse?
     private static func calcMem(queue: Int = 0, visited: Int = 0, cameFrom: Int = 0, pq: Int = 0, costSoFar: Int = 0) -> Int64 {
         return Int64(queue * 16 + visited * 16 + cameFrom * 32 + pq * 24 + costSoFar * 24)
     }
     
-    // MARK: - BFS
+    
+    // MARK: BFS
     static func runBFS(graph: Graph, start: UUID, target: UUID, delay: UInt64, onUpdate: @escaping UpdateCallback) async -> PathfindingResult {
         var queue = [start]
         var visited = Set<UUID>([start])
@@ -75,7 +81,8 @@ class PathfindingAlgorithms {
         return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
     }
     
-    // MARK: - DFS
+    
+    // MARK: DFS
     static func runDFS(graph: Graph, start: UUID, target: UUID, delay: UInt64, onUpdate: @escaping UpdateCallback) async -> PathfindingResult {
         var stack = [start]
         var visited = Set<UUID>([start])
@@ -122,7 +129,7 @@ class PathfindingAlgorithms {
         return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
     }
     
-    // MARK: - PriorityQueue for UCS, Greedy, A*
+    // MARK: Coda supporto
     struct PQElement<T>: Comparable {
         let element: T
         let priority: Double
@@ -188,9 +195,7 @@ class PathfindingAlgorithms {
         }
     }
 
-    // UCS Removed
-    
-    // MARK: - Heuristic (Euclidean Distance)
+    // MARK: Euristica basata sullo schermo, ringraziamo Pitagora
     static func heuristic(nodeA: Node?, nodeB: Node?) -> Double {
         guard let a = nodeA, let b = nodeB else { return 0 }
         let dx = a.position.x - b.position.x
@@ -198,7 +203,8 @@ class PathfindingAlgorithms {
         return sqrt(dx*dx + dy*dy)
     }
 
-    // MARK: - Dijkstra
+    
+    // MARK: Dijkstra UCS
     static func runDijkstra(graph: Graph, start: UUID, target: UUID, delay: UInt64, onUpdate: @escaping UpdateCallback) async -> PathfindingResult {
         var pq = Heap<PQElement<UUID>>(sort: <)
         pq.insert(PQElement(element: start, priority: 0))
@@ -251,7 +257,8 @@ class PathfindingAlgorithms {
         return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
     }
 
-    // MARK: - A* Search
+    
+    // MARK: A*
     static func runAStar(graph: Graph, start: UUID, target: UUID, delay: UInt64, onUpdate: @escaping UpdateCallback) async -> PathfindingResult {
         var pq = Heap<PQElement<UUID>>(sort: <)
         pq.insert(PQElement(element: start, priority: 0))
@@ -307,7 +314,8 @@ class PathfindingAlgorithms {
         return PathfindingResult(path: [], pathCost: 0, exploredCount: exploredCount, uniqueExploredCount: closedSet.count, peakMemoryBytes: mem)
     }
     
-    // MARK: - Greedy Search
+    
+    // MARK: Greedy Search (The goat)
     static func runGreedy(graph: Graph, start: UUID, target: UUID, delay: UInt64, onUpdate: @escaping UpdateCallback) async -> PathfindingResult {
         var pq = Heap<PQElement<UUID>>(sort: <)
         pq.insert(PQElement(element: start, priority: 0))
@@ -360,7 +368,7 @@ class PathfindingAlgorithms {
 
 
     
-    // MARK: - Helper
+    // MARK: Funzione supporto PC
     private static func reconstructPathAndCost(cameFrom: [UUID: UUID], current: UUID, graph: Graph) -> ([UUID], Double) {
         var path = [current]
         var pathCost: Double = 0

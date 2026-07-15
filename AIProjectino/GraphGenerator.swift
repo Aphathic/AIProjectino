@@ -1,8 +1,14 @@
+//
+//  AIProjectinoApp.swift
+//  AIProjectino
+//
+//  Created by Rosario d'Antonio on 06/07/2026.
+//
+
 import Foundation
 import CoreGraphics
 
-/// Generates a random geometric graph using spatial hashing for efficient neighbor lookup.
-/// Runs off the main thread — no SwiftUI imports to avoid implicit MainActor isolation.
+
 func createRandomGraph(size: GraphSize) -> (Graph, UUID, UUID, CGRect) {
     var graph = Graph()
     let count = size.nodeCount
@@ -21,7 +27,6 @@ func createRandomGraph(size: GraphSize) -> (Graph, UUID, UUID, CGRect) {
     var maxX: Double = -.greatestFiniteMagnitude
     var maxY: Double = -.greatestFiniteMagnitude
 
-    // 1. Place nodes randomly
     var nodesArray = [Node]()
     nodesArray.reserveCapacity(count)
 
@@ -36,7 +41,7 @@ func createRandomGraph(size: GraphSize) -> (Graph, UUID, UUID, CGRect) {
         nodesArray.append(node)
     }
 
-    // 2. Build a spatial hash grid (cell size = connection radius)
+    // griglia spaziale per i nodi (raggio=
     let cellSize = radius
     var grid = [String: [Node]]()
 
@@ -53,7 +58,7 @@ func createRandomGraph(size: GraphSize) -> (Graph, UUID, UUID, CGRect) {
         (0,-1), (0,1), (1,-1), (1,0), (1,1)
     ]
 
-    // 3. Connect nodes within radius using spatial hashing
+    // collega i nodi entro il raggio, peso dell'arco = distanza
     for node in nodesArray {
         let cx = Int(node.position.x / cellSize)
         let cy = Int(node.position.y / cellSize)
@@ -87,7 +92,7 @@ func createRandomGraph(size: GraphSize) -> (Graph, UUID, UUID, CGRect) {
         }
     }
 
-    // 4. Ensure every node has at least 2 connections
+    // ogni nodo deve avere almeno 2 connessioni e massimo 8 se no diventa la romania parte 2
     for node in nodesArray {
         var degreeA = graph.adjacencyList[node.id]?.count ?? 0
         while degreeA < 2 {
@@ -125,7 +130,6 @@ func createRandomGraph(size: GraphSize) -> (Graph, UUID, UUID, CGRect) {
         }
     }
 
-    // 5. Pick start and target
     let start = nodesArray.randomElement()!.id
     var target = nodesArray.randomElement()!.id
     while target == start { target = nodesArray.randomElement()!.id }

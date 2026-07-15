@@ -1,6 +1,12 @@
+//
+//  ContentView.swift
+//  AIProjectino
+//
+//  Created by Crescenzo Di Franco on 07/06/2026.
+//
+
 import SwiftUI
 
-// Central color mapping used by the Canvas
 fileprivate func colorForStatus(_ status: NodeStatus) -> Color {
     switch status {
     case .unvisited: return Color.gray.opacity(0.25)
@@ -20,7 +26,6 @@ struct ContentView: View {
             Color(UIColor.systemBackground).edgesIgnoringSafeArea(.all)
 
             VStack(spacing: 0) {
-                // Main Canvas Area
                 ZStack {
                     if viewModel.graph != nil {
                         ZoomableScrollView(minimumZoomScale: 1.0, maximumZoomScale: 8.0) {
@@ -33,7 +38,6 @@ struct ContentView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
 
-                    // Computing Overlay
                     if viewModel.isRunning && !viewModel.isAnimating {
                         ZStack {
                             Color.black.opacity(0.35)
@@ -63,13 +67,11 @@ struct ContentView: View {
                         }
                     }
 
-                    // Generating Overlay
                     if viewModel.isGenerating {
                         GeneratingOverlay()
                     }
                 }
 
-                // Bottom Panel: Algorithms
                 BottomControlSheet(viewModel: viewModel)
                     .shadow(radius: 2, y: -2)
             }
@@ -80,11 +82,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Subviews
 
-
-
-// MARK: - Node Legend
 struct NodeLegend: View {
     private let items: [(Color, String)] = [
         (.green,  "Start"),
@@ -118,7 +116,6 @@ struct NodeLegend: View {
     }
 }
 
-// MARK: - Empty Canvas
 struct EmptyCanvasView: View {
     var body: some View {
         VStack(spacing: 16) {
@@ -137,7 +134,6 @@ struct EmptyCanvasView: View {
     }
 }
 
-// MARK: - Bottom Control Sheet
 struct BottomControlSheet: View {
     @ObservedObject var viewModel: PathfindingViewModel
 
@@ -146,7 +142,6 @@ struct BottomControlSheet: View {
             Divider()
 
             VStack(spacing: 16) {
-                // ── Graph Generation ──────────────────────────────────────
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Generate Graph", systemImage: "square.grid.3x3.fill")
                         .font(.footnote)
@@ -168,7 +163,6 @@ struct BottomControlSheet: View {
                     }
                 }
 
-                // ── Algorithm Selection ───────────────────────────────────
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Run Algorithm", systemImage: "play.circle.fill")
                         .font(.footnote)
@@ -177,7 +171,6 @@ struct BottomControlSheet: View {
                         .textCase(.uppercase)
                         .kerning(0.5)
 
-                    // 2-column grid for better discoverability than horizontal scroll
                     let columns = [GridItem(.flexible()), GridItem(.flexible())]
                     LazyVGrid(columns: columns, spacing: 8) {
                         ForEach(PathfindingAlgorithm.allCases) { algo in
@@ -207,7 +200,6 @@ struct BottomControlSheet: View {
     }
 }
 
-// MARK: - Size Button
 struct SizeButton: View {
     let title: String
     let isActive: Bool
@@ -232,7 +224,6 @@ struct SizeButton: View {
     }
 }
 
-// MARK: - Algorithm Button
 struct AlgorithmButton: View {
     let title: String
     let isActive: Bool
@@ -267,7 +258,6 @@ struct AlgorithmButton: View {
     }
 }
 
-// MARK: - Generating Overlay
 struct GeneratingOverlay: View {
     var body: some View {
         ZStack {
@@ -293,7 +283,6 @@ struct GeneratingOverlay: View {
     }
 }
 
-// MARK: - Results Sheet
 struct ResultsSheet: View {
     let metrics: PathfindingMetrics
 
@@ -401,7 +390,6 @@ struct MetricRow: View {
     }
 }
 
-// MARK: - Canvas View
 struct GraphCanvasView: View {
     @ObservedObject var viewModel: PathfindingViewModel
 
@@ -427,7 +415,7 @@ struct GraphCanvasView: View {
                 context.translateBy(x: tx, y: ty)
                 context.scaleBy(x: scale, y: scale)
 
-                // ── Edges ────────────────────────────────────────────────────
+                // archi
                 var edgePath   = Path()
                 var drawnEdges = Set<String>()
 
@@ -443,7 +431,7 @@ struct GraphCanvasView: View {
                 }
                 context.stroke(edgePath, with: .color(Color.gray.opacity(0.15)), lineWidth: 0.8 / scale)
 
-                // ── Nodes ────────────────────────────────────────────────────
+                // nodi
                 let r: Double = 4.0 / scale
 
                 for (_, node) in graph.nodes {
@@ -458,7 +446,7 @@ struct GraphCanvasView: View {
                     }
                 }
 
-                // ── Path edges (highlight) ───────────────────────────────────
+                // percorso
                 if viewModel.finalPath.count > 1 {
                     var pathTrace = Path()
                     if let firstNode = graph.nodes[viewModel.finalPath[0]] {
@@ -472,7 +460,7 @@ struct GraphCanvasView: View {
                     context.stroke(pathTrace, with: .color(.yellow), lineWidth: 3.0 / scale)
                 }
 
-                // ── Start / Target drawn on top, larger ──────────────────────
+                // start e target li disegniamo sopra, più grandi se no non si vedono grazie
                 if let startId = viewModel.startNode, let startNode = graph.nodes[startId] {
                     let rS = r * 2.5
                     let rect = CGRect(x: startNode.position.x - rS, y: startNode.position.y - rS,

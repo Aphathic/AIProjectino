@@ -1,6 +1,13 @@
+//
+//  ZoomableScrollView.swift
+//  AIProjectino
+//
+//  Created by Crescenzo Di Franco on 22/03/2026.
+//
+
 import SwiftUI
 
-/// Wraps a SwiftUI view inside a UIScrollView for native pinch-to-zoom and pan.
+// Magia Nera copiata da RealGO NON TOCCARE
 struct ZoomableScrollView<Content: View>: UIViewRepresentable {
     private var content: Content
     private var minimumZoomScale: CGFloat
@@ -58,8 +65,6 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
         context.coordinator.onScaleChange = onScaleChange
         uiView.minimumZoomScale = minimumZoomScale
         uiView.maximumZoomScale = maximumZoomScale
-
-        // Re-center after layout updates (e.g. new graph generated)
         DispatchQueue.main.async {
             context.coordinator.scrollViewDidZoom(uiView)
         }
@@ -83,7 +88,6 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
         }
 
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            // Keep content centered when zoomed out
             let offsetX = max((scrollView.bounds.width  - scrollView.contentSize.width)  * 0.5, 0)
             let offsetY = max((scrollView.bounds.height - scrollView.contentSize.height) * 0.5, 0)
             scrollView.contentInset = UIEdgeInsets(top: offsetY, left: offsetX, bottom: 0, right: 0)

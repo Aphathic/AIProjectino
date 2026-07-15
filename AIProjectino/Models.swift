@@ -1,7 +1,13 @@
+//
+//  Models.swift
+//  AIProjectino
+//
+//  Created by Crescenzo Di Franco on 09/07/2026.
+//
+
 import Foundation
 import CoreGraphics
 
-/// Represents the state of a node during pathfinding
 enum NodeStatus: Equatable {
     case unvisited
     case open
@@ -10,8 +16,7 @@ enum NodeStatus: Equatable {
     case start
     case target
 }
-
-/// Represents a point/node in our graph
+// MARK: Nodi
 struct Node: Identifiable, Hashable {
     let id: UUID
     var position: CGPoint
@@ -22,7 +27,6 @@ struct Node: Identifiable, Hashable {
     }
 }
 
-/// Represents a directed/undirected connection between two nodes
 struct Edge: Identifiable, Hashable {
     let id: UUID
     let source: UUID
@@ -37,7 +41,7 @@ struct Edge: Identifiable, Hashable {
     }
 }
 
-/// A container for our nodes and edges with an adjacency list for fast O(1) lookups
+// lista di adiacenza e vicini del nodo
 struct Graph {
     var nodes: [UUID: Node] = [:]
     var edges: [Edge] = []
@@ -62,6 +66,7 @@ struct Graph {
     }
 }
 
+// Cambia in nomi brother
 enum GraphSize: String, CaseIterable {
     case small = "100"
     case medium = "1.000"
@@ -88,7 +93,7 @@ enum GraphSize: String, CaseIterable {
 }
 
 struct PathfindingMetrics: Identifiable {
-    // Provide an id so this struct can be used with SwiftUI's `sheet(item:)`
+    // non so perche ma senza ID non funziona, grazie Swift, fixare
     let id = UUID()
 
     let algorithmName: String
@@ -97,9 +102,6 @@ struct PathfindingMetrics: Identifiable {
     let exploredNodesCount: Int
     let memoryUsedBytes: Int64
 
-    // Additional fields used by newer UI (keeps backward compatibility)
-    // Provide sensible defaults so the synthesized memberwise initializer
-    // can be used throughout the app without needing a custom init.
     let stepsTaken: Int
     let uniqueExploredCount: Int
     let pathLength: Int
